@@ -1,4 +1,3 @@
-[README_proper_boost.md](https://github.com/user-attachments/files/26575027/README_proper_boost.md)
 # BOOST Microgrid Sizing — Clean Reimplementation
 
 This repository contains a **clean Python reimplementation** of the core BOOST workflow for residential microgrid sizing:
