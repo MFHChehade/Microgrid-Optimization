@@ -1,254 +1,134 @@
-# BOOST Microgrid Sizing — Clean Reimplementation
+# BOOST-style microgrid sizing reimplementation
 
-This repository contains a **clean Python reimplementation** of the core BOOST workflow for residential microgrid sizing:
+This is a **clean reimplementation** of the core idea in **BOOST: Microgrid Sizing using Ordinal Optimization**:
 
-- **stage 1:** evaluate many candidate designs with a cheaper **LP** dispatch model
-- **stage 2:** re-evaluate only the top-ranked designs with a more accurate **MILP**
-- **output:** choose the best design based on annualized total cost / LCOE
+1. evaluate many candidate `(battery size, PV size)` designs with a **simple LP**;
+2. rank them by **annual operating cost + annualized investment cost**;
+3. re-evaluate only the top-`s` designs with a more accurate **MILP** that adds the diesel minimum-output logic.
 
-The implementation is designed to be **readable, editable, and runnable out of the box**.
+## What is included
 
-## What this code is
+- `boost_sizing/dispatch.py`  
+  Weekly dispatch solver:
+  - LP = simple model
+  - MILP = accurate model with diesel on/off binary
 
-This project is a **method-faithful reimplementation** of the paper’s main idea:
+- `boost_sizing/yearly.py`  
+  Rolls the weekly dispatch solver across the full year with **SOC carryover** from week to week.
 
-- outer **ordinal-optimization (OO)** screening
-- inner **weekly dispatch optimization**
-- full-year cost aggregation
-- comparison against simple baselines
+- `boost_sizing/oo.py`  
+  Implements:
+  - the `N` formula from the paper
+  - the alignment-probability formula
+  - automatic choice of `s`
 
-It is **not** an exact reproduction of the authors’ original numbers from the paper. The current code uses:
+- `boost_sizing/boost.py`  
+  End-to-end experiment runner:
+  - sample `N` designs
+  - solve LP for each
+  - rank designs
+  - solve MILP on top `s`
+  - export CSVs, PNG plots, and JSON summary
 
-- a **synthetic hourly benchmark**
-- explicit, editable engineering assumptions
-- a simplified but consistent economic model
+- `boost_sizing/baselines.py`  
+  Two comparison baselines:
+  - greedy dispatch
+  - approximate DP dispatch
 
-That makes it useful for:
-- understanding the method
-- generating new experiments
-- creating figures quickly
-- extending the workflow to real CSV data later
+- `boost_sizing/synthetic_data.py`  
+  Creates an hourly synthetic year of:
+  - load
+  - solar capacity factor
+  - time-of-use grid price
 
-## Important note about the zip files
+## Why this version is slightly more explicit than the paper
 
-The **full runnable project** is the one that contains:
+The paper is short, so a few engineering details have to be made explicit in code. This implementation therefore adds or fixes the following:
 
-- `boost_sizing/`
-- `requirements.txt`
-- `run_experiment.py`
-- `demo_quickstart.py`
-- `generate_expanded_results.py`
+- **battery charge/discharge power limits**  
+  The paper shows SOC dynamics and SOC bounds, but does not visibly spell out explicit battery power-rate constraints in the short formulation. Here they are added directly.
 
-If you downloaded a zip that only contains the three top-level scripts and **does not** include `boost_sizing/`, that archive is incomplete for running the code. Use the full runnable bundle instead.
+- **weekly SOC carryover**  
+  The paper says a new optimization is solved every week. This code carries the final SOC from one week into the next.
 
-## Repository structure
+- **annualized costs**  
+  PV and battery investment costs are annualized using the standard capital recovery factor.
 
-```text
-boost_reimplementation_full/
-├── boost_sizing/
-│   ├── __init__.py
-│   ├── baselines.py
-│   ├── boost.py
-│   ├── config.py
-│   ├── costs.py
-│   ├── csv_data.py
-│   ├── design_space.py
-│   ├── dispatch.py
-│   ├── oo.py
-│   ├── synthetic_data.py
-│   ├── types.py
-│   └── yearly.py
-├── demo_quickstart.py
-├── run_experiment.py
-├── generate_expanded_results.py
-├── requirements.txt
-└── results/
-```
+- **synthetic demo data by default**  
+  This keeps the code runnable out of the box. You can swap in real hourly CSVs easily by replacing the `generate_synthetic_year(...)` call with your own loader.
 
-## Main capabilities
+## Default modeling choices
 
-### 1. Synthetic benchmark generation
-The code can generate a synthetic year of hourly data for:
+These are editable in `boost_sizing/config.py`.
 
-- load
-- solar availability
-- grid price
+- battery max charge power = `0.10 * battery_kwh` kW
+- battery max discharge power = `0.10 * battery_kwh` kW
+- SOC bounds = 10% to 90%
+- charge / discharge efficiencies = 95%
+- diesel minimum output = 150 kW
+- diesel maximum output = 1500 kW
+- grid maximum import = 2500 kW
 
-This lets the full pipeline run immediately without any external dataset.
-
-### 2. Fixed-design dispatch
-For a given design `(battery_kwh, pv_kw)`, the code solves:
-
-- a **simple LP** dispatch model
-- a more accurate **MILP** dispatch model
-
-The dispatch is evaluated in **weekly windows** and rolled across the year.
-
-### 3. Ordinal optimization
-The OO stage:
-
-- computes the theoretical sample size `N`
-- chooses the retained set size `s`
-- screens candidate designs with the LP
-- re-evaluates top designs with the MILP
-
-### 4. Baselines
-The code includes lightweight baselines for comparison:
-
-- **greedy**
-- **approximate DP**
-- **BOOST**
-
-### 5. Expanded plotting / paper support
-The project includes scripts used to generate the expanded benchmark outputs and figures used in the paper workflow.
-
-## Installation
-
-From the project root:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-Or on a simple existing Python environment:
-
-```powershell
-pip install -r requirements.txt
-```
+The 10%-per-hour battery power limit matches a conservative engineering default and can be changed in one place.
 
 ## Quick start
 
-### Fast sanity check
-Runs a small end-to-end experiment and writes outputs to `results/quickstart/`.
-
-```powershell
-python .\demo_quickstart.py
+```bash
+python demo_quickstart.py
 ```
 
-### Main experiment
-Runs the standard experiment pipeline.
+This runs an **8-week smoke test** and writes outputs under:
 
-```powershell
-python .\run_experiment.py --out_dir results\run_full
-```
-
-### Expanded results / figure generation
-Runs the expanded benchmark workflow and writes outputs and figures.
-
-```powershell
-python .\generate_expanded_results.py
-```
-
-## Expected outputs
-
-Typical output artifacts include:
-
-- LP rankings
-- accurate top-`s` rankings
-- best design summary
-- baseline comparison CSV
-- schedule CSVs
-- figures for rank stability / LCOE / runtime / sensitivity / dispatch
-
-Examples already included in the bundle:
-
-```text
+```bash
 results/quickstart/
-├── accurate_top_s.csv
-├── baseline_comparison.csv
-├── best_schedule.csv
-├── dp_schedule.csv
-├── greedy_schedule.csv
-├── lp_rankings.csv
-├── summary.json
-└── figs/
 ```
 
-## Data model
+## Full(er) run
 
-### Current default
-The default workflow uses **synthetic hourly data** so that the project is self-contained.
-
-### Real CSV support
-The package includes `csv_data.py` to make it easier to switch to real data later. The intended real-data inputs are hourly series for:
-
-- load
-- solar / PV availability
-- grid price
-
-The codebase is structured so you can replace the synthetic generator with CSV-backed inputs without rewriting the optimization logic.
-
-## Method summary
-
-For each candidate design:
-
-1. solve weekly dispatch across the year
-2. aggregate annual operating cost
-3. add annualized battery and PV cost
-4. compute total cost / LCOE
-
-Then BOOST does:
-
-1. evaluate many designs with the **LP**
-2. rank them
-3. keep the top `s`
-4. re-evaluate only those with the **MILP**
-5. select the best refined design
-
-## Modeling notes
-
-This code makes several explicit choices that are reasonable for a clean engineering implementation but may not exactly match the original paper implementation:
-
-- battery charge/discharge limits are modeled explicitly
-- annualized cost terms are written in a transparent way
-- weekly optimization is chained across the year
-- the synthetic benchmark is used for repeatability and rapid experimentation
-
-So this repo should be read as a **clean reimplementation**, not a claim of exact archival reproduction.
-
-## Recommended workflow for future figure changes
-
-To avoid rerunning expensive experiments repeatedly:
-
-1. run the experiments once
-2. save outputs to **CSV**
-3. regenerate only the plots
-4. recompile the paper
-
-That is the workflow used in the later paper iterations.
-
-## If you want to upload this to GitHub
-
-A clean GitHub workflow is:
-
-1. clone your repository fresh
-2. mirror this project into the repo folder
-3. `git add -A`
-4. commit
-5. push
-
-Example PowerShell skeleton:
-
-```powershell
-git clone https://github.com/MFHChehade/Microgrid-Optimization.git
-# copy / mirror the new project into the cloned folder
-git add -A
-git commit -m "Replace repository contents with BOOST reimplementation"
-git push origin HEAD
+```bash
+python run_experiment.py --out_dir results/run_full
 ```
 
-## Known limitations
+For the default 10x10 design grid, the theoretical ordinal-optimization formula gives about 90 candidate designs for the paper's `P=99%`, `alpha=5%` setting.
 
-- not an exact reproduction of the original paper’s published numerical results
-- current default benchmark is synthetic
-- figure / paper artifacts may evolve separately from the base code
-- approximate DP baseline is lightweight and intended mainly for comparative illustration
+## Main outputs
 
-## Recommended citation / description
+- `lp_rankings.csv`  
+  LP-screened designs
 
-A good one-line description for the repo is:
+- `accurate_top_s.csv`  
+  top-`s` designs after accurate MILP re-evaluation
 
-> Clean Python reimplementation of BOOST-style ordinal-optimization microgrid sizing with LP screening, MILP refinement, synthetic benchmarks, and paper-ready figure generation.
+- `best_schedule.csv`  
+  yearly schedule for the best accurate design
 
+- `baseline_comparison.csv`  
+  LCOE comparison of BOOST vs. DP vs. greedy on the selected best design
+
+- `summary.json`  
+  overall experiment summary
+
+- `figs/*.png`  
+  rank-stability and LCOE plots
+
+## Notes on faithfulness
+
+This is **method-faithful**, not a byte-for-byte clone of the original public codebase. In particular:
+
+- it uses **SciPy / HiGHS** instead of the original repository's implementation stack;
+- it uses synthetic demo data unless you provide your own real data;
+- the DP baseline is intentionally approximate and documented as such.
+
+That said, the core paper logic is preserved:
+- simple LP screening,
+- top-`s` refinement with a more accurate MILP,
+- ordinal-optimization formulas for `N` and `s`,
+- total-cost ranking,
+- LCOE reporting.
+
+## Suggested next upgrades
+
+1. swap synthetic data for real hourly load / irradiance / tariff CSVs;
+2. replace the approximate DP baseline with the exact DP from the author's earlier microgrid work;
+3. add battery degradation and curtailment penalties;
+4. add explicit grid outage/intermittency modeling if desired.

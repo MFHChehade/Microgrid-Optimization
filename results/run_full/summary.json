@@ -1,0 +1,26 @@
+{
+  "n_theory": 90,
+  "n_used": 90,
+  "g": 10,
+  "s": 18,
+  "alignment_probability": 0.9062672326134731,
+  "best_design": {
+    "battery_kwh": 500.0,
+    "pv_kw": 1833.333
+  },
+  "best_accurate_lcoe_c_per_kwh": 13.169358070940904,
+  "baseline_summary": {
+    "BOOST": {
+      "total_cost": 1321739.241623058,
+      "lcoe_c_per_kwh": 13.169358070940904
+    },
+    "DP": {
+      "total_cost": 1322609.8743582796,
+      "lcoe_c_per_kwh": 13.178032757957334
+    },
+    "greedy": {
+      "total_cost": 1329948.2470012596,
+      "lcoe_c_per_kwh": 13.251149794926539
+    }
+  }
+}
